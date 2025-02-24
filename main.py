@@ -5,6 +5,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Cal
 
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN') or exit("🚨Error: TELEGRAM_TOKEN is not set.")
 openai.api_key = os.getenv('OPENAI_API_KEY') or None
+DEEPSEEK_api_key = os.getenv('DEEPSEEK_API_KEY') or None
 SESSION_DATA = {}
 
 def load_configuration():
@@ -40,7 +41,7 @@ async def command_start(update: Update, context: CallbackContext):
     await update.message.reply_text("ℹ️Welcome! Go ahead and say something to start the conversation. More features can be found in this command: /help")
 
 @get_session_id
-async def command_check(update: Update, context: CallbackContext, session_id):
+async def command_check1(update: Update, context: CallbackContext, session_id):
     # Получаем сообщение, на которое ответил пользователь
     if update.message.reply_to_message:
         original_message = update.message.reply_to_message.text
@@ -66,6 +67,43 @@ async def command_check(update: Update, context: CallbackContext, session_id):
                     },
                 ],
             )
+
+            await update.message.reply_text(response.choices[0].message.content)
+        else:
+            await update.message.reply_text('Пожалуйста, отправьте ссылку в ответ на сообщение.')
+    else:
+        await update.message.reply_text('Вы должны ответить на сообщение с ссылкой.')
+
+async def command_check(update: Update, context: CallbackContext, session_id):
+    if update.message.reply_to_message:
+        original_message = update.message.reply_to_message.text
+
+        # Проверяем, содержит ли сообщение ссылку
+        if 'http' in update.message.text:
+            url = update.message.text.strip()
+
+            # Отправляем запрос ко мне через API
+            urldps = "https://api.deepseek.com/v1/chat/completions"  # Пример URL, уточните у DeepSeek
+            headers = {
+                "Authorization": f"Bearer {DEEPSEEK_api_key}",
+                "Content-Type": "application/json"
+            }
+            data = {
+                "model": "deepseek-reasoner",  # Уточните модель у DeepSeek
+                "messages": [{"role": "user", "content": f"""
+                            Проверь что утверждение "{original_message}" следует из содержимного по ссылке {url}. Обоснуй ответ.
+
+                            Формат ответа:
+
+                            ("Подтверждаю" или "Не подтверждаю"
+                            "Обосновнание:"
+                            список фактов)"""}]
+            }
+            response = requests.post(urldps, json=data, headers=headers)
+            if response.status_code == 200:
+                return response.json()['choices'][0]['message']['content'].strip()
+            else:
+                return "Ошибка при запросе к DeepSeek"
 
             await update.message.reply_text(response.choices[0].message.content)
         else:
