@@ -109,7 +109,7 @@ async def command_check(update: Update, context: CallbackContext, session_id):
 
             # Отправляем запрос ко мне через API
             response = openai.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-4o-mini",
                 messages=[
                     {
                         "role": "user",
