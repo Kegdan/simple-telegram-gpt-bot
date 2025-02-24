@@ -113,7 +113,14 @@ async def command_check(update: Update, context: CallbackContext, session_id):
                 messages=[
                     {
                         "role": "user",
-                        "content": f"Проверь, есть ли на странице по ссылке {url} информация, связанная с этим текстом: {original_message}",
+                        "content": f"""
+                            Проверь что утверждение "{original_message}" следует из содержимного по ссылке {url}. Обоснуй ответ.
+
+                            Формат ответа:
+
+                            ("Подтверждаю" или "Не подтверждаю"
+                            "Обосновнание:"
+                            список фактов)""",
                     },
                 ],
             )
