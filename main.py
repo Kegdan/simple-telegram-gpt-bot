@@ -118,11 +118,11 @@ async def command_check(update: Update, context: CallbackContext, session_id):
                 ],
             )
 
-            update.message.reply_text(response.choices[0].message.content)
+            await update.message.reply_text(response.choices[0].message.content)
         else:
-            update.message.reply_text('Пожалуйста, отправьте ссылку в ответ на сообщение.')
+            await update.message.reply_text('Пожалуйста, отправьте ссылку в ответ на сообщение.')
     else:
-        update.message.reply_text('Вы должны ответить на сообщение с ссылкой.')
+        await update.message.reply_text('Вы должны ответить на сообщение с ссылкой.')
 
 def update_session_preference(session_id, preference, value):
     if session_id in SESSION_DATA:
