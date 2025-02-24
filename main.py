@@ -36,64 +36,6 @@ def check_api_key(func):
         return await func(update, context, *args, **kwargs)
     return wrapper
 
-def relay_errors(func):
-    async def wrapper(update: Update, context: CallbackContext, *args, **kwargs):
-        try:
-            return await func(update, context, *args, **kwargs)
-        except Exception as e:
-            await update.message.reply_text(f"An error occurred. e: {e}")
-    return wrapper
-
-CONFIGURATION = load_configuration()
-VISION_MODELS = CONFIGURATION.get('vision_models', [])
-VALID_MODELS = CONFIGURATION.get('VALID_MODELS', {})
-
-@relay_errors
-@get_session_id
-@initialize_session_data
-@check_api_key
-async def handle_message(update: Update, context: CallbackContext, session_id):
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
-    session_data = SESSION_DATA[session_id]
-    if update.message.photo and session_data['model'] in VISION_MODELS:
-        photo = update.message.photo[-1]
-        photo_file = await context.bot.get_file(photo.file_id)
-        photo_url = photo_file.file_path
-        caption = update.message.caption or "Describe this image."
-        session_data['chat_history'].append({
-            "role": "user",
-            "content": [
-                {"type": "text", "text": caption},
-                {"type": "image_url", "image_url": photo_url}
-            ]
-        })
-    else:
-        user_message = update.message.text
-        session_data['chat_history'].append({
-            "role": "user",
-            "content": user_message
-        })
-    messages_for_api = [message for message in session_data['chat_history']]
-    response = await response_from_openai(
-        session_data['model'], 
-        messages_for_api, 
-        session_data['temperature'], 
-        session_data['max_tokens']
-    )
-    session_data['chat_history'].append({
-        'role': 'assistant',
-        'content': response
-    })
-    await update.message.reply_markdown(response)
-
-async def response_from_openai(model, messages, temperature, max_tokens):
-    params = {'model': model, 'messages': messages, 'temperature': temperature}
-    if model == "gpt-4-vision-preview": # legacy parameter
-        max_tokens = 4096
-    if max_tokens is not None: 
-        params['max_tokens'] = max_tokens
-    return openai.chat.completions.create(**params).choices[0].message.content
-
 async def command_start(update: Update, context: CallbackContext):
     await update.message.reply_text("ℹ️Welcome! Go ahead and say something to start the conversation. More features can be found in this command: /help")
 
@@ -109,7 +51,7 @@ async def command_check(update: Update, context: CallbackContext, session_id):
 
             # Отправляем запрос ко мне через API
             response = openai.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4",
                 messages=[
                     {
                         "role": "user",
@@ -131,13 +73,6 @@ async def command_check(update: Update, context: CallbackContext, session_id):
     else:
         await update.message.reply_text('Вы должны ответить на сообщение с ссылкой.')
 
-def update_session_preference(session_id, preference, value):
-    if session_id in SESSION_DATA:
-        SESSION_DATA[session_id][preference] = value
-        logging.debug(f"Updated {preference} for session_id={session_id}: {value}")
-    else:
-        logging.warning(f"Tried to update preference for non-existing session_id={session_id}")
-
 async def command_help(update: Update, context: CallbackContext):
     commands = [
         ("/check", "Check proof"),
@@ -153,8 +88,7 @@ def register_handlers(application):
             CommandHandler('start', command_start),
             CommandHandler('check', command_check),
             CommandHandler('help', command_help)
-        ],
-        1: [MessageHandler(filters.ALL & (~filters.COMMAND), handle_message)]
+        ]
     })
 
 def railway_dns_workaround():
