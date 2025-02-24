@@ -108,14 +108,17 @@ async def command_check(update: Update, context: CallbackContext, session_id):
             url = update.message.text.strip()
 
             # Отправляем запрос ко мне через API
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",  # Or use "gpt-4" depending on your access
-                messages=[{"role": "user", "content": f"Проверь, есть ли на странице по ссылке {url} информация, связанная с этим текстом: {original_message}"}],
-                max_tokens=100,  # Set a limit on the response length
-                temperature=0.7,  # Control the creativity of the response
+            response = openai.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"Проверь, есть ли на странице по ссылке {url} информация, связанная с этим текстом: {original_message}",
+                    },
+                ],
             )
 
-            update.message.reply_text(response.choices[0].text.strip())
+            update.message.reply_text(response.choices[0].message.content)
         else:
             update.message.reply_text('Пожалуйста, отправьте ссылку в ответ на сообщение.')
     else:
