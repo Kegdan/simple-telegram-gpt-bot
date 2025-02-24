@@ -98,19 +98,35 @@ async def command_start(update: Update, context: CallbackContext):
     await update.message.reply_text("ℹ️Welcome! Go ahead and say something to start the conversation. More features can be found in this command: /help")
 
 @get_session_id
-async def command_reset(update: Update, context: CallbackContext, session_id):
-    if session_id in SESSION_DATA:
-        del SESSION_DATA[session_id]
-        await update.message.reply_text("ℹ️All settings have been reset.")
-    await update.message.reply_text("ℹ️No session data to reset.") 
+async def command_check(update: Update, context: CallbackContext, session_id):
+    # Получаем сообщение, на которое ответил пользователь
+    if update.message.reply_to_message:
+        original_message = update.message.reply_to_message.text
 
-@get_session_id
-async def command_clear(update: Update, context: CallbackContext, session_id):
-    if session_id in SESSION_DATA:
-        SESSION_DATA[session_id]['chat_history'] = []
-        await update.message.reply_text("ℹ️Chat history is now empty!")
+        # Проверяем, содержит ли сообщение ссылку
+        if 'http' in update.message.text:
+            url = update.message.text.strip()
+
+            # Отправляем запрос ко мне через API
+            response = requests.post('https://api.openai.com/v1/completions', json={
+                "model": "gpt-3.5-turbo",
+                "messages": [
+                    {"role": "user", "content": f"Проверь, есть ли на странице по ссылке {url} информация, связанная с этим текстом: {original_message}"}
+                ]
+            }, headers={
+                'Authorization': 'Bearer '+ os.getenv('OPENAI_API_KEY')
+            })
+
+            if response.status_code == 200:
+                data = response.json()
+                bot_response = data['choices'][0]['message']['content']
+                update.message.reply_text(bot_response)
+            else:
+                update.message.reply_text(f"Ошибка при запросе: {response.status_code}")
+        else:
+            update.message.reply_text('Пожалуйста, отправьте ссылку в ответ на сообщение.')
     else:
-        logging.warning(f"No session data found for session_id={session_id}")
+        update.message.reply_text('Вы должны ответить на сообщение с ссылкой.')
 
 def update_session_preference(session_id, preference, value):
     if session_id in SESSION_DATA:
@@ -119,92 +135,9 @@ def update_session_preference(session_id, preference, value):
     else:
         logging.warning(f"Tried to update preference for non-existing session_id={session_id}")
 
-@get_session_id
-@initialize_session_data
-async def command_set(update: Update, context: CallbackContext, session_id):
-    args = context.args
-    if not args:
-        await update.message.reply_text("⚠️Please specify what to set (model, temperature, system_prompt, max_tokens, openai_api_key).")
-        return
-    preference, *rest = args
-    preference = preference.lower()
-    value = ' '.join(rest)
-    if preference == 'model':
-        if not value:
-            model_list = "\n".join(f"{model}: {', '.join(shorthand)}" for model, shorthand in VALID_MODELS.items())
-            await update.message.reply_text(f"Available models:\n{model_list}")
-            return
-        if value in sum(VALID_MODELS.values(), []):
-            actual_model = next(m for m in VALID_MODELS if value in VALID_MODELS[m])
-            update_session_preference(session_id, 'model', actual_model)
-            await command_clear(update, context)
-            logging.debug(f"After model update, SESSION_DATA[{session_id}]: {SESSION_DATA[session_id]}")
-            await update.message.reply_text(f"✅Model set to {actual_model}.")
-        else:
-            await update.message.reply_text("⚠️Invalid model. Please choose from the available models.")
-        return
-    if preference == 'openai_api_key':
-        openai.api_key = value
-        await update.message.reply_text("✅OpenAI API key has been set.")
-    elif preference == 'temperature':
-        try:
-            temperature = float(value)
-            if 0 <= temperature <= 2.0:
-                update_session_preference(session_id, 'temperature', temperature)
-                await update.message.reply_text(f"✅Temperature set to {value}.")
-            else:
-                raise ValueError
-        except ValueError:
-            await update.message.reply_text("⚠️Invalid temperature. Please provide a value between 0.0 and 2.0.")
-    elif preference == 'system_prompt':
-        update_session_preference(session_id, 'system_prompt', value)
-        await update.message.reply_text("✅System prompt updated.")
-    elif preference == 'max_tokens':
-        if value.isdigit():
-            update_session_preference(session_id, 'max_tokens', int(value))
-            await update.message.reply_text(f"✅Max tokens set to {value}.")
-        else:
-            await update.message.reply_text("⚠️Invalid max tokens. Please provide a numeric value.")
-    else:
-        await update.message.reply_text("⚠️Invalid setting or value.")
-
-@get_session_id
-async def command_show(update: Update, context: CallbackContext, session_id):
-    session_data = SESSION_DATA.get(session_id, {})
-    message = "**Session Data:**\n"
-    if not session_data:
-        message += "Session data not initialized, yet.\n"
-    else:
-        preferences = {k: v for k, v in session_data.items() if k != 'chat_history'}
-        for key, value in preferences.items():
-            message += f"{key.capitalize()}: {value}\n"
-    message += "\n**Chat History:**\n"
-    if 'chat_history' in session_data and session_data['chat_history']:
-        for chat in session_data['chat_history']:
-            role = chat['role'].capitalize()
-            content = chat['content']
-            if isinstance(content, list):  # Handling vision capable model messages
-                for item in content:
-                    if item.get('type') == 'image_url':
-                        message += f"  {role}: <Image sent>\n"
-                    elif 'text' in item:
-                        message += f"  {role}: {item['text']}\n"
-            else:
-                message += f"  {role}: {content}\n"
-    else:
-        message += "No chat history available."
-    max_length = 4096
-    message_chunks = [message[i:i + max_length] for i in range(0, len(message), max_length)]
-    for chunk in message_chunks:
-        await update.message.reply_text(chunk)
-
 async def command_help(update: Update, context: CallbackContext):
     commands = [
-        ("/reset", "Reset settings"),
-        ("/clear", "Clean up chat history"),
-        ("/set", "Change settings"),
-        ("/show", "Show session data and chat history"),
-        ("/help", "Command list"),
+        ("/check", "Check proof"),
     ]
     help_text = "<b>📚 Usage Commands:</b>\n"
     for command, description in commands:
@@ -215,11 +148,7 @@ def register_handlers(application):
     application.add_handlers(handlers={ 
         -1: [
             CommandHandler('start', command_start),
-            CommandHandler('reset', command_reset),
-            CommandHandler('clear', command_clear),
-            CommandHandler('set', command_set),
-            CommandHandler('show', command_show),
-            CommandHandler('help', command_help)
+            CommandHandler('check', command_check),
         ],
         1: [MessageHandler(filters.ALL & (~filters.COMMAND), handle_message)]
     })
