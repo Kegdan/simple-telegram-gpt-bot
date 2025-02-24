@@ -108,21 +108,16 @@ async def command_check(update: Update, context: CallbackContext, session_id):
             url = update.message.text.strip()
 
             # Отправляем запрос ко мне через API
-            response = requests.post('https://api.openai.com/v1/completions', json={
-                "model": "gpt-3.5-turbo",
-                "messages": [
-                    {"role": "user", "content": f"Проверь, есть ли на странице по ссылке {url} информация, связанная с этим текстом: {original_message}"}
-                ]
-            }, headers={
-                'Authorization': 'Bearer '+ os.getenv('OPENAI_API_KEY')
-            })
+            response = openai.Completion.create(
+                model="gpt-3.5-turbo",  # Или используйте gpt-4
+                prompt=f"Проверь, есть ли на странице по ссылке {url} информация, связанная с этим текстом: {original_message}",
+                max_tokens=100,  # Ограничение на количество токенов
+                n=1,  # Количество ответов
+                stop=None,  # Можно задать стоп-сигналы
+                temperature=0.7  # Настроить температуру (креативность)
+            )
 
-            if response.status_code == 200:
-                data = response.json()
-                bot_response = data['choices'][0]['message']['content']
-                update.message.reply_text(bot_response)
-            else:
-                update.message.reply_text(f"Ошибка при запросе: {response.status_code}")
+            update.message.reply_text(response.choices[0].text.strip())
         else:
             update.message.reply_text('Пожалуйста, отправьте ссылку в ответ на сообщение.')
     else:
@@ -149,6 +144,7 @@ def register_handlers(application):
         -1: [
             CommandHandler('start', command_start),
             CommandHandler('check', command_check),
+            CommandHandler('help', command_help)
         ],
         1: [MessageHandler(filters.ALL & (~filters.COMMAND), handle_message)]
     })
